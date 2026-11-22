@@ -2218,6 +2218,11 @@ nav {
   nav { border-top: 1px solid rgba(156, 161, 186, 0.2) !important; }
 }
 </style>
+<style id="preset-row-fix">
+div:has(> input[placeholder="New preset name"]) { display: flex !important; flex-wrap: wrap !important; gap: 8px !important; align-items: center !important; }
+input[placeholder="New preset name"] { flex: 1 1 160px !important; min-width: 0 !important; width: auto !important; }
+div:has(> input[placeholder="New preset name"]) > button { flex: none !important; }
+</style>
 </head>
 <body>
 <main id="scroll-panel">
@@ -4361,6 +4366,198 @@ if('serviceWorker' in navigator&&/^https?:/.test(location.protocol)){
   setInterval(check,60*60*1000);
  }).catch(()=>{});
 }
+</script>
+<script id="v37-features">
+/* v37: undo for deletes, chore archive, last-shop list, calendar export, new-notes badge */
+(function(){
+ const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+ const todayIso=()=>{const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')};
+ const persistAll=()=>{try{localStorage.setItem('fam',JSON.stringify(S))}catch(e){} if(typeof persist==='function')try{persist()}catch(e){}};
+ const rerender=()=>{if(typeof render==='function')render()};
+ const pname=id=>{const p=(S.people||[]).find(x=>x.id===id);return p?p.n:''};
+ S.choreArchive=S.choreArchive||[]; S.lastShop=S.lastShop||[];
+
+ /* 1. Undo for deletes */
+ const origDel=window.del;
+ window.del=function(k,id){
+  const item=(S[k]||[]).find(x=>x.id===id);
+  origDel.apply(this,arguments);
+  if(item){const label=item.t||item.n||item.title||'Item';
+   if(typeof showUndo==='function')showUndo('Removed “'+label+'”',()=>{S[k].push(item);persistAll();rerender()});
+  }
+ };
+
+ /* 2. Chore archive: a completed one-off chore moves out of the list */
+ const origTick=window.chTick;
+ window.chTick=function(id){
+  origTick.apply(this,arguments);
+  const c=(S.chores||[]).find(x=>x.id===id);
+  if(c&&c.r==='n'&&c.last){
+   S.chores=S.chores.filter(x=>x.id!==id);
+   S.choreArchive.unshift(Object.assign({},c,{doneAt:todayIso(),doneBy:(c.ps||[]).map(pname).filter(Boolean).join(' and ')||'Anyone'}));
+   persistAll();rerender();
+  }
+ };
+ function choreArchivePanel(){
+  const view=document.getElementById('s-chores');if(!view)return;const old=view.querySelector('#choreArchive');if(old)old.remove();
+  const items=S.choreArchive;
+  const box=document.createElement('div');box.id='choreArchive';box.style.marginTop='22px';
+  box.innerHTML='<h2>Completed to-dos ('+items.length+')</h2>'+(items.length?items.map(c=>`<div class="card" style="display:flex;gap:10px;align-items:center"><div class="grow"><b>${esc(c.t)}</b><div class="mu">${esc(c.doneBy)} · ${esc(c.doneAt)}</div></div><button class="chip" data-arch-restore="${c.id}">Restore</button><button class="chip" data-arch-del="${c.id}" aria-label="Delete">✕</button></div>`).join(''):'<div class="mu">Nothing archived yet.</div>');
+  view.appendChild(box);
+ }
+ document.addEventListener('click',e=>{
+  const r=e.target.closest('[data-arch-restore]');
+  if(r){const c=S.choreArchive.find(x=>x.id===r.dataset.archRestore);if(c){S.choreArchive=S.choreArchive.filter(x=>x.id!==c.id);const {doneAt,doneBy,...back}=c;back.last='';S.chores.push(back);persistAll();rerender();toast&&toast('Chore restored')}return}
+  const d=e.target.closest('[data-arch-del]');
+  if(d){S.choreArchive=S.choreArchive.filter(x=>x.id!==d.dataset.archDel);persistAll();rerender();return}
+  const f=e.target.closest('[data-finish-shop]');
+  if(f){const ticked=(S.shop||[]).filter(x=>x.d);if(!ticked.length){toast&&toast('Tick off some items first');return}
+   S.lastShop=[{date:todayIso(),items:ticked.map(x=>({t:x.t,q:x.q||1,c:x.c}))}].concat(S.lastShop).slice(0,10);
+   S.shop=(S.shop||[]).filter(x=>!x.d);persistAll();rerender();toast&&toast('Shop finished. Last shop saved.');return}
+  const a=e.target.closest('[data-lastshop-add]');
+  if(a){const g=S.lastShop[+a.dataset.lastshopAdd];if(g){g.items.forEach(x=>{if(!S.shop.some(y=>!y.d&&y.t.toLowerCase()===x.t.toLowerCase()))S.shop.push({id:Math.random().toString(36).slice(2,9),t:x.t,c:x.c||'other',d:0,l:'Main',q:x.q||1})});persistAll();rerender();toast&&toast('Added back to your list')}return}
+  if(e.target.closest('[data-export-ics]')){exportIcs();return}
+ });
+
+ /* 3. Last shop + finish shop on the shopping page */
+ function shopExtras(){
+  const view=document.getElementById('s-shop');if(!view)return;const oldBox=view.querySelector('#lastShopBox');if(oldBox)oldBox.remove();
+  const box=document.createElement('div');box.id='lastShopBox';box.style.marginTop='22px';
+  const done=(S.shop||[]).filter(x=>x.d).length;
+  box.innerHTML='<div class="bar" style="margin-bottom:10px"><button class="chip on" data-finish-shop="1">Finish shop'+(done?' ('+done+')':'')+'</button></div>'+
+   '<h2>Last shops</h2>'+(S.lastShop.length?S.lastShop.map((g,i)=>`<div class="card"><div class="row"><b class="grow">${esc(g.date)}</b><button class="chip" data-lastshop-add="${i}">Add all back</button></div><div class="mu" style="margin-top:6px">${g.items.map(x=>esc(x.t)+(x.q>1?' × '+x.q:'')).join(', ')}</div></div>`).join(''):'<div class="mu">No finished shops yet.</div>');
+  view.appendChild(box);
+ }
+
+ /* 4. Calendar export (.ics) */
+ function icsEsc(s){return String(s||'').replace(/\\/g,'\\\\').replace(/;/g,'\\;').replace(/,/g,'\\,').replace(/\n/g,'\\n')}
+ function icsDate(s){return s.replace(/-/g,'')}
+ function icsNext(s){const d=new Date(s+'T12:00:00');d.setDate(d.getDate()+1);return d.getFullYear()+String(d.getMonth()+1).padStart(2,'0')+String(d.getDate()).padStart(2,'0')}
+ function exportIcs(){
+  const map={d:'FREQ=DAILY',w:'FREQ=WEEKLY',f:'FREQ=WEEKLY;INTERVAL=2',m:'FREQ=MONTHLY',y:'FREQ=YEARLY'};
+  const lines=['BEGIN:VCALENDAR','VERSION:2.0','PRODID:-//Family Hub//EN','CALSCALE:GREGORIAN'];
+  const stamp=new Date().toISOString().replace(/[-:]/g,'').replace(/\.\d{3}/,'');
+  (S.events||[]).forEach(e=>{
+   lines.push('BEGIN:VEVENT','UID:'+e.id+'@family-hub','DTSTAMP:'+stamp,'SUMMARY:'+icsEsc(e.t));
+   const end=e.e&&e.e>=e.d?e.e:e.d;
+   if(e.a||!e.m){lines.push('DTSTART;VALUE=DATE:'+icsDate(e.d),'DTEND;VALUE=DATE:'+icsNext(end))}
+   else{const t=s=>s.replace(':','')+'00';lines.push('DTSTART:'+icsDate(e.d)+'T'+t(e.m),'DTEND:'+icsDate(end)+'T'+t(e.m2||e.m))}
+   if(e.r&&e.r!=='n'&&map[e.r]){let rr=map[e.r];if(e.u)rr+=';UNTIL='+icsDate(e.u)+(e.a||!e.m?'':'T235959');lines.push('RRULE:'+rr)}
+   if(e.n)lines.push('DESCRIPTION:'+icsEsc(e.n));
+   lines.push('END:VEVENT');
+  });
+  lines.push('END:VCALENDAR');
+  const blob=new Blob([lines.join('\r\n')],{type:'text/calendar'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='family-hub-calendar.ics';document.body.appendChild(a);a.click();a.remove();
+  setTimeout(()=>URL.revokeObjectURL(a.href),4000);
+  toast&&toast('Calendar file ready. Open it to add to your calendar app.');
+ }
+ function calExport(){
+  const view=document.getElementById('s-cal');if(!view||view.querySelector('#calExportBtn'))return;
+  const b=document.createElement('div');b.id='calExportBtn';b.className='center-actions';
+  b.innerHTML='<button class="chip" data-export-ics="1">Export calendar (.ics)</button>';
+  view.appendChild(b);
+ }
+
+ /* 5. New-notes badge on the Notes tab */
+ function notesBadge(){
+  const btn=[...document.querySelectorAll('nav button')].find(b=>/notes/i.test(b.textContent));
+  if(!btn)return;
+  const seen=localStorage.getItem('fh_notes_seen')||'';
+  const n=(S.notes||[]).filter(x=>(x.ts||'')>seen).length;
+  let badge=btn.querySelector('.note-badge');
+  if(!badge){badge=document.createElement('span');badge.className='note-badge';badge.style.cssText='position:absolute;transform:translate(22px,-14px);background:#d93025;color:#fff;border-radius:999px;font-size:11px;font-weight:800;min-width:18px;height:18px;padding:0 5px;display:none;align-items:center;justify-content:center';btn.style.position='relative';btn.appendChild(badge)}
+  badge.textContent=n>9?'9+':String(n);badge.style.display=n?'inline-flex':'none';
+ }
+ function markNotesSeen(){localStorage.setItem('fh_notes_seen',new Date().toISOString());notesBadge()}
+
+
+ /* keep the panels in place after every redraw */
+ const origRender=window.render;
+ window.render=function(){const r=origRender.apply(this,arguments);
+  const on=(document.querySelector('.sec.on')||{}).id;
+  if(on==='s-chores')choreArchivePanel();
+  if(on==='s-shop')shopExtras();
+  if(on==='s-cal')calExport();
+  notesBadge();return r};
+ /* hooks */
+ const origTab=window.tab;
+ window.tab=function(k){
+  origTab.apply(this,arguments);
+  if(k==='chores')setTimeout(choreArchivePanel,0);
+  if(k==='shop')setTimeout(shopExtras,0);
+  if(k==='cal')setTimeout(calExport,0);
+  if(k==='notes')setTimeout(markNotesSeen,0);
+  setTimeout(notesBadge,0);
+ };
+ setInterval(notesBadge,30000);
+ setTimeout(notesBadge,800);
+})();
+</script>
+
+<script id="v38-notes-archive">
+/* v38: archive for notes */
+(function(){
+ const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+ const persistAll=()=>{try{localStorage.setItem('fam',JSON.stringify(S))}catch(e){} if(typeof persist==='function')try{persist()}catch(e){}};
+ S.notesArchive=S.notesArchive||[];
+ const fmt=s=>{try{return new Date(s).toLocaleDateString(undefined,{day:'numeric',month:'short'})}catch(e){return ''}};
+ function decorateNoteButtons(){
+  document.querySelectorAll('#s-notes .note-card').forEach(card=>{
+   if(card.querySelector('[data-note-archive]'))return;
+   const del=card.querySelector('button[title="Delete"]');
+   const m=del&&del.getAttribute('onclick')&&del.getAttribute('onclick').match(/del\('notes','([^']+)'\)/);
+   if(!m)return;
+   const btn=document.createElement('button');btn.className='x';btn.title='Archive';btn.setAttribute('aria-label','Archive note');btn.dataset.noteArchive=m[1];
+   btn.innerHTML='<span class="ms-icon" aria-hidden="true" style="width:18px;height:18px"><svg viewBox="0 0 24 24"><path d="M20.54 5.23l-1.39-1.68C18.88 3.21 18.47 3 18 3H6c-.47 0-.88.21-1.16.55L3.46 5.23C3.17 5.57 3 6.02 3 6.5V19c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V6.5c0-.48-.17-.93-.46-1.27zM12 17.5L6.5 12H10v-2h4v2h3.5L12 17.5zM5.12 5l.81-1h12l.94 1H5.12z"/></svg></span>';
+   del.parentNode.insertBefore(btn,del);
+  });
+ }
+ function archivePanel(){
+  const view=document.getElementById('s-notes');if(!view)return;
+  const old=view.querySelector('#notesArchive');if(old)old.remove();
+  const box=document.createElement('div');box.id='notesArchive';box.style.marginTop='22px';
+  const items=S.notesArchive;
+  box.innerHTML='<h2>Archived notes ('+items.length+')</h2>'+(items.length?items.map(n=>`<div class="card"><div class="mu" style="font-size:12px">${esc(fmt(n.ts))} · archived ${esc(fmt(n.archivedAt))}</div><div style="white-space:pre-wrap;margin:6px 0">${esc(n.t)}</div><div class="bar"><button class="chip" data-note-restore="${n.id}">Restore</button><button class="chip" data-note-adel="${n.id}">Delete</button></div></div>`).join(''):'<div class="mu">Nothing archived.</div>');
+  view.appendChild(box);
+ }
+ document.addEventListener('click',e=>{
+  const a=e.target.closest('[data-note-archive]');
+  if(a){const id=a.dataset.noteArchive;const n=S.notes.find(x=>x.id===id);if(!n)return;
+   S.notes=S.notes.filter(x=>x.id!==id);S.notesArchive.unshift(Object.assign({},n,{archivedAt:new Date().toISOString()}));
+   persistAll();if(typeof showUndo==='function')showUndo('Note archived',()=>{S.notesArchive=S.notesArchive.filter(x=>x.id!==id);S.notes.push(n);persistAll();render()});
+   render();return}
+  const r=e.target.closest('[data-note-restore]');
+  if(r){const n=S.notesArchive.find(x=>x.id===r.dataset.noteRestore);if(n){S.notesArchive=S.notesArchive.filter(x=>x.id!==n.id);const {archivedAt,...back}=n;S.notes.push(back);persistAll();render();if(typeof toast==='function')toast('Note restored')}return}
+  const d=e.target.closest('[data-note-adel]');
+  if(d){S.notesArchive=S.notesArchive.filter(x=>x.id!==d.dataset.noteAdel);persistAll();render();return}
+ });
+ const origRender=window.render;
+ window.render=function(){const r=origRender.apply(this,arguments);
+  const on=(document.querySelector('.sec.on')||{}).id;
+  if(on==='s-notes'){decorateNoteButtons();archivePanel()}
+  return r};
+ const origTab=window.tab;
+ window.tab=function(k){const r=origTab.apply(this,arguments);if(k==='notes')setTimeout(()=>{decorateNoteButtons();archivePanel()},0);return r};
+})();
+</script>
+<script id="v41-delete-forever">
+/* v41: explicit "Delete forever" for archived notes and to-dos, with confirmation */
+(function(){
+ const label=()=>{
+  document.querySelectorAll('[data-arch-del]').forEach(b=>{b.textContent='Delete forever';b.style.color='var(--dn)'});
+  document.querySelectorAll('[data-note-adel]').forEach(b=>{b.textContent='Delete forever';b.style.color='var(--dn)'});
+ };
+ document.addEventListener('click',e=>{
+  const b=e.target.closest('[data-arch-del],[data-note-adel]');
+  if(!b)return;
+  if(!confirm('Delete forever? This cannot be undone.')){e.stopImmediatePropagation();e.preventDefault()}
+ },true);
+ const origRender=window.render;
+ window.render=function(){const r=origRender.apply(this,arguments);setTimeout(label,0);return r};
+ const origTab=window.tab;
+ window.tab=function(){const r=origTab.apply(this,arguments);setTimeout(label,30);return r};
+})();
 </script>
 </body>
 </html>

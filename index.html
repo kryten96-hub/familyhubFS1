@@ -2223,6 +2223,10 @@ div:has(> input[placeholder="New preset name"]) { display: flex !important; flex
 input[placeholder="New preset name"] { flex: 1 1 160px !important; min-width: 0 !important; width: auto !important; }
 div:has(> input[placeholder="New preset name"]) > button { flex: none !important; }
 </style>
+<style id="event-form-fix">
+#evModal { z-index: 80 !important; align-items: flex-start !important; padding: 16px 16px calc(96px + env(safe-area-inset-bottom, 0px)) !important; }
+#evModal .modal-card { max-height: calc(100dvh - 112px - env(safe-area-inset-bottom, 0px)) !important; overflow-y: auto !important; -webkit-overflow-scrolling: touch; }
+</style>
 </head>
 <body>
 <main id="scroll-panel">
@@ -4557,6 +4561,32 @@ if('serviceWorker' in navigator&&/^https?:/.test(location.protocol)){
  window.render=function(){const r=origRender.apply(this,arguments);setTimeout(label,0);return r};
  const origTab=window.tab;
  window.tab=function(){const r=origTab.apply(this,arguments);setTimeout(label,30);return r};
+})();
+</script>
+<script id="v42-google-signin">
+/* v42: Continue with Google, using Firebase's redirect sign-in */
+(function(){
+ async function googleSignIn(){
+  try{
+   await fbLoad();
+   const provider=new fbA.GoogleAuthProvider();
+   await fbA.signInWithRedirect(fbAuth,provider);
+  }catch(e){
+   const m=(e&&e.code==='auth/operation-not-allowed')?'Turn on Google sign-in in Firebase first (Authentication → Sign-in method).':'Could not sign in with Google. Please try again.';
+   if(typeof toast==='function')toast(m);
+  }
+ }
+ window.fhGoogleSignIn=googleSignIn;
+ function addButton(){
+  const btn=document.querySelector('button[onclick="fhSignIn()"]');
+  if(!btn||document.getElementById('googleSignInBtn'))return;
+  const b=document.createElement('button');
+  b.id='googleSignInBtn';b.className='chip';b.style.marginTop='8px';
+  b.textContent='Continue with Google';b.onclick=googleSignIn;
+  btn.parentElement.insertAdjacentElement('afterend',b);
+ }
+ const so=window.setOpen;
+ window.setOpen=function(v){so.apply(this,arguments);if(v)setTimeout(addButton,60)};
 })();
 </script>
 </body>

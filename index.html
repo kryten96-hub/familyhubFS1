@@ -2,6 +2,13 @@
 
 <html data-look="pixel" data-ui="refresh" lang="en">
 <head>
+<script id="v44-missing-helpers">
+window.pn=function(e){try{const names=(e.ps||[]).map(function(id){const p=(S.people||[]).find(function(x){return x.id===id});return p?p.n:''}).filter(Boolean);return names.length?' · '+names.join(' and '):''}catch(err){return ''}};
+window.sw=function(k,label,sub){try{const c=(S.cdSet||{});const on=c[k]!==false;return "<label class='set-row' style='display:flex;justify-content:space-between;align-items:center;padding:12px 2px;border-bottom:1px solid var(--line,#eee)'><span>"+label+(sub?"<br><small class='mu'>"+sub+"</small>":"")+"</span><input type='checkbox' "+(on?'checked':'')+" onchange='(function(v){S.cdSet=S.cdSet||{};S.cdSet["+JSON.stringify(k)+"]=v;save();render()})(this.checked)'></label>"}catch(err){return ''}};
+</script>
+
+<script id="v44-escape-helper">window.ea=function(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})};</script>
+
 <meta charset="utf-8"/>
 <meta content="Family Hub keeps your family calendar, shopping, meals, chores, notes and important information together." name="description"/>
 <title>Family Hub</title>
@@ -4587,6 +4594,29 @@ if('serviceWorker' in navigator&&/^https?:/.test(location.protocol)){
  }
  const so=window.setOpen;
  window.setOpen=function(v){so.apply(this,arguments);if(v)setTimeout(addButton,60)};
+})();
+</script>
+<script id="v44-archive-guard">
+/* v44: keep archives when a shared copy arrives without them */
+(function(){
+ const KEYS=['notesArchive','choreArchive','lastShop'];
+ const CACHE='fh_archive_cache';
+ const readCache=()=>{try{return JSON.parse(localStorage.getItem(CACHE))||{}}catch(e){return {}}};
+ const writeCache=()=>{const c={};KEYS.forEach(k=>{c[k]=Array.isArray(S[k])?S[k]:[]});try{localStorage.setItem(CACHE,JSON.stringify(c))}catch(e){}};
+ KEYS.forEach(k=>{if(!Array.isArray(S[k]))S[k]=[]});
+ const origSave=window.save;
+ window.save=function(){KEYS.forEach(k=>{if(!Array.isArray(S[k]))S[k]=[]});writeCache();return origSave.apply(this,arguments)};
+ const origPersist=window.persist;
+ if(typeof origPersist==='function'){
+  window.persist=function(){KEYS.forEach(k=>{if(!Array.isArray(S[k]))S[k]=[]});writeCache();return origPersist.apply(this,arguments)};
+ }
+ const origRender=window.render;
+ window.render=function(){
+  const c=readCache();
+  KEYS.forEach(k=>{if(!Array.isArray(S[k])){S[k]=Array.isArray(c[k])?c[k]:[]}});
+  return origRender.apply(this,arguments);
+ };
+ writeCache();
 })();
 </script>
 </body>
